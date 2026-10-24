@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="WeaponData" format=3]
+[ext_resource type="Script" path="res://scripts/weapons/weapon_data.gd" id="1"]
+[ext_resource type="Resource" path="res://resources/visuals/shotgun_visual.tres" id="skin"]
+[resource]
+script = ExtResource("1")
+visual_profile = ExtResource("skin")
+display_name = "霰弹枪"
+visual_id = "shotgun"
+magazine = 6
+fire_rate = 0.8
+automatic = false
+spread_deg = 12.0
+max_range = 240.0
+noise_radius = 200.0
+pellets = 6
+
+melee_inner = 4.0

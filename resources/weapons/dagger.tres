@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="WeaponData" format=3]
+[ext_resource type="Script" path="res://scripts/weapons/weapon_data.gd" id="1"]
+[ext_resource type="Resource" path="res://resources/visuals/dagger_visual.tres" id="skin"]
+[resource]
+script = ExtResource("1")
+display_name = "匕首"
+kind = 1
+visual_id = "dagger"
+magazine = 0
+melee_inner = 5.0
+visual_profile = ExtResource("skin")

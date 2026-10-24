@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="WeaponVisualData" format=3]
+
+[ext_resource type="Script" path="res://scripts/visuals/weapon_visual_data.gd" id="1"]
+[ext_resource type="Texture2D" uid="uid://cldlff35bhxek" path="res://assets/sprites/weapons/katana.png" id="2"]
+
+[resource]
+script = ExtResource("1")
+texture = ExtResource("2")
+pixels_per_unit = 4.0
+grip_px = Vector2(8, 16)
+muzzle_px = Vector2(120, 12)
+tip_px = Vector2(120, 12)
+ground_center_px = Vector2(64, 16)

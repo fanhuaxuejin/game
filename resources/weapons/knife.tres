@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="WeaponData" format=3]
+[ext_resource type="Script" path="res://scripts/weapons/weapon_data.gd" id="1"]
+[ext_resource type="Resource" path="res://resources/visuals/knife_visual.tres" id="skin"]
+
+[resource]
+script = ExtResource("1")
+display_name = "刀"
+kind = 1
+visual_id = "knife"
+magazine = 0
+
+visual_profile = ExtResource("skin")
+
+melee_inner = 5.0

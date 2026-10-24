@@ -1,0 +1,37 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/player/player.gd" id="1_gfjak"]
+[ext_resource type="Script" path="res://scripts/fx/game_camera.gd" id="3_cam"]
+
+[ext_resource type="PackedScene" path="res://scenes/visuals/ActorVisual.tscn" id="actor_visual"]
+[ext_resource type="Resource" path="res://resources/visuals/player_sample.tres" id="appearance"]
+[ext_resource type="PackedScene" path="res://scenes/visuals/WeaponView.tscn" id="weapon_view"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_524rm"]
+size = Vector2(12, 12)
+
+[node name="Player" type="CharacterBody2D" unique_id=843350010]
+collision_layer = 2
+collision_mask = 257
+script = ExtResource("1_gfjak")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1048910311]
+shape = SubResource("RectangleShape2D_524rm")
+
+[node name="Body" parent="." instance=ExtResource("actor_visual")]
+appearance = ExtResource("appearance")
+
+[node name="Aim" type="Node2D" parent="." unique_id=612529553]
+
+[node name="Gun" parent="Aim" instance=ExtResource("weapon_view")]
+
+[node name="Muzzle" type="Marker2D" parent="Aim" unique_id=447187041]
+position = Vector2(15, 0)
+
+[node name="Flash" type="Polygon2D" parent="Aim/Muzzle" unique_id=265965404]
+visible = false
+color = Color(1, 0.9, 0.45, 1)
+polygon = PackedVector2Array(0, -4, 10, 0, 0, 4, -3, 0)
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=1240273720]
+script = ExtResource("3_cam")

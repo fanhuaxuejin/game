@@ -1,0 +1,26 @@
+# Godot generated files
+.godot/
+/android/
+/build/
+/builds/
+/dist/
+/export_templates/
+/feature_profiles/
+/script_templates/
+/text_editor_themes/
+/export_credentials.cfg
+
+# Local files
+/.vscode/
+/.idea/
+/.env
+/.env.*
+*.bak
+*.tmp
+*.log
+
+# Asset production and capture helpers
+/tools/*_capture.gd
+/tools/*_capture.gd.uid
+/tools/residential_pack.gd
+/tools/residential_pack.gd.uid

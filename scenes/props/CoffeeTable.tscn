@@ -1,0 +1,22 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/props/furniture_prop.gd" id="script"]
+[ext_resource type="Texture2D" path="res://assets/residential/coffee_table.png" id="texture"]
+
+[sub_resource type="RectangleShape2D" id="shape"]
+size = Vector2(32, 16)
+
+[node name="CoffeeTable" type="StaticBody2D"]
+collision_layer = 256
+collision_mask = 0
+script = ExtResource("script")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+position = Vector2(16, 8)
+scale = Vector2(0.25, 0.25)
+texture_filter = 1
+texture = ExtResource("texture")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(16, 8)
+shape = SubResource("shape")

@@ -1,0 +1,5 @@
+[gd_scene format=3]
+[ext_resource type="PackedScene" path="res://scenes/enemies/EnemyRanged.tscn" id="base"]
+[ext_resource type="Resource" path="res://resources/weapons/shotgun.tres" id="weapon"]
+[node name="EnemyShotgun" instance=ExtResource("base")]
+weapon = ExtResource("weapon")

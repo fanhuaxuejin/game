@@ -1,0 +1,38 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/enemies/enemy_melee.gd" id="1"]
+
+[ext_resource type="Resource" path="res://resources/weapons/knife.tres" id="weapon"]
+
+[ext_resource type="PackedScene" path="res://scenes/visuals/ActorVisual.tscn" id="actor_visual"]
+[ext_resource type="Resource" path="res://resources/visuals/enemy_sample.tres" id="appearance"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_body"]
+size = Vector2(10, 10)
+
+[node name="EnemyMelee" type="CharacterBody2D"]
+collision_layer = 4
+collision_mask = 257
+script = ExtResource("1")
+weapon = ExtResource("weapon")
+vision_range = 240.0
+vision_angle_deg = 110.0
+hearing_multiplier = 1.0
+alert_time = 4.0
+move_speed = 150.0
+accel = 1100.0
+contact_kill = false
+contact_range = 18.0
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_body")
+
+[node name="Visual" parent="." instance=ExtResource("actor_visual")]
+appearance = ExtResource("appearance")
+
+[node name="Aim" type="Node2D" parent="."]
+
+[node name="Nose" type="Polygon2D" parent="Aim"]
+color = Color(1, 0.78, 0.45, 1)
+polygon = PackedVector2Array(5, -3.5, 13, 0, 5, 3.5)
+

@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="WeaponData" format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/weapon_data.gd" id="1_1vsk4"]
+
+[ext_resource type="Resource" path="res://resources/visuals/pistol_visual.tres" id="skin"]
+
+[resource]
+script = ExtResource("1_1vsk4")
+
+visual_profile = ExtResource("skin")
+
+melee_inner = 14.0

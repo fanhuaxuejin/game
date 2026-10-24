@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="WeaponVisualData" format=3]
+[ext_resource type="Script" path="res://scripts/visuals/weapon_visual_data.gd" id="1"]
+[resource]
+script = ExtResource("1")
+sample_id = "dagger"
+grip_px = Vector2(8, 16)
+muzzle_px = Vector2(120, 16)
+tip_px = Vector2(120, 16)
+ground_center_px = Vector2(74, 16)

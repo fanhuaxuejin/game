@@ -1,0 +1,7 @@
+[gd_resource type="Resource" script_class="ActorAppearance" format=3]
+[ext_resource type="Script" path="res://scripts/visuals/actor_appearance.gd" id="1"]
+[resource]
+script = ExtResource("1")
+appearance_id = "enemy_sample"
+outfit = Color(0.64, 0.24, 0.16, 1)
+accent = Color(0.95, 0.69, 0.32, 1)

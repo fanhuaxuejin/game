@@ -1,0 +1,44 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/props/door.gd" id="1"]
+
+[sub_resource type="RectangleShape2D" id="Rect_panel"]
+size = Vector2(32, 6)
+
+[sub_resource type="RectangleShape2D" id="Rect_trigger"]
+size = Vector2(24, 40)
+
+[sub_resource type="RectangleShape2D" id="Rect_seal"]
+size = Vector2(38, 6)
+
+[node name="Door" type="Node2D"]
+script = ExtResource("1")
+
+[node name="Hinge" type="Node2D" parent="."]
+position = Vector2(-16, 0)
+
+[node name="Panel" type="StaticBody2D" parent="Hinge"]
+collision_layer = 128
+collision_mask = 0
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Hinge/Panel"]
+position = Vector2(16, 0)
+shape = SubResource("Rect_panel")
+
+[node name="Visual" type="Polygon2D" parent="Hinge/Panel"]
+color = Color(0.62, 0.45, 0.28, 1)
+polygon = PackedVector2Array(0, -3, 32, -3, 32, 3, 0, 3)
+
+[node name="Trigger" type="Area2D" parent="."]
+collision_layer = 0
+collision_mask = 6
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Trigger"]
+shape = SubResource("Rect_trigger")
+
+[node name="VisionSeal" type="StaticBody2D" parent="."]
+collision_layer = 64
+collision_mask = 0
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="VisionSeal"]
+shape = SubResource("Rect_seal")

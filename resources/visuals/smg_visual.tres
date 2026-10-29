@@ -8,6 +8,7 @@
 script = ExtResource("1")
 texture = ExtResource("2")
 held_texture = ExtResource("3")
+held_tilt_deg = 0.0
 pixels_per_unit = 4.0
 grip_px = Vector2(8, 16)
 muzzle_px = Vector2(96, 16)

@@ -7,7 +7,6 @@ var ai_enabled := false
 func _ready() -> void:
 	super._ready()
 	_set_ai(false)
-	Events.enemy_died.connect(add_blood)
 
 
 func _set_ai(enabled: bool) -> void:
@@ -23,7 +22,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	match event.keycode:
 		KEY_R:
 			get_tree().reload_current_scene()
-		KEY_TAB:
+		KEY_F8:
 			_set_ai(not ai_enabled)
 		KEY_C:
 			get_tree().debug_collisions_hint = not get_tree().debug_collisions_hint

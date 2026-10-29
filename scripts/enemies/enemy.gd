@@ -70,7 +70,20 @@ var weapon_instance: WeaponState:
 	get: return combat.instance if combat != null else null
 var ammo: int:
 	get: return weapon_instance.ammo if weapon_instance != null else 0
-var execution_armed := false
+var execution_armed := false # 退役兼容字段，手动F处决不再读它
+var execution_owner: Node2D
+var alert_marker: Label
+var _investigation_from_player := false
+var _nav_revision := -1
+var _nav_failures := 0
+var _nav_blocked := false
+var _nav_sample := Vector2.ZERO
+var _nav_stuck_left := 0.0
+var _resolved_goal := Vector2.ZERO
+const REPATH_TIME := 0.25
+const STUCK_TIME := 0.6
+const STUCK_DISTANCE := 2.0
+const NAV_RETRIES := 2
 
 @onready var aim: Node2D = $Aim
 @onready var shape: CollisionShape2D = $CollisionShape2D
@@ -157,6 +170,12 @@ func _ready() -> void:
 	combat.pose_changed.connect(visual.receive_pose)
 	visual.bind_weapon_view(model)
 	equip_weapon(WeaponState.new(weapon) if weapon != null else null)
+	alert_marker = Label.new()
+	alert_marker.name = "AlertMarker"
+	alert_marker.position = Vector2(-4,-24)
+	alert_marker.add_theme_font_size_override("font_size",16)
+	alert_marker.hide()
+	add_child(alert_marker)
 	_on_enemy_ready()
 	rebuild_route()
 	state = _default_state()
@@ -167,6 +186,7 @@ func _ready() -> void:
 ## 补查找玩家。_ready 没找到时延迟一帧再试（那时整棵场景树都已经就位）。
 func _process(_delta: float) -> void:
 	visual.update_state(velocity, aim.global_rotation, move_speed, is_stunned())
+	update_alert_marker()
 
 
 func _find_player() -> void:
@@ -189,9 +209,10 @@ func player_alive() -> bool:
 func _physics_process(delta: float) -> void:
 	if state == State.DEAD:
 		return
-	# 在任何角色处理顺序下记录分离，推倒同帧不会直接连成处决。
-	if _stun_left > 0.0 and player_alive() and global_position.distance_to(player.global_position) > player.execution_radius:
-		execution_armed = true
+	# 处决暂停苏醒时钟，不能用反复stun延时，否则会重复缴械/改变剩余时间。
+	if is_instance_valid(execution_owner):
+		velocity = Vector2.ZERO
+		return
 	# 被门撞晕中：不跑 AI，只带着被打退的速度滑行一小段
 	if _stun_left > 0.0:
 		_stun_left = maxf(_stun_left - delta, 0.0)
@@ -216,7 +237,6 @@ func _physics_process(delta: float) -> void:
 	if combat.committed():
 		velocity = Vector2.ZERO
 		return
-	_alert_left = maxf(_alert_left - delta, 0.0)
 	_update_perception()
 	# 看见同伴的尸体 → 过去查看。放在玩家感知之后：正在追玩家时不该被尸体打断。
 	_check_corpses(delta)
@@ -288,10 +308,14 @@ func _update_perception() -> void:
 			if debug_vision:
 				_debug_report_sight()
 			state = State.CHASE
+			_investigation_from_player = true
+			_scanning = false
 			_on_spotted()
 	elif state == State.CHASE or state == State.ATTACK:
 		# 丢失视野 → 去最后已知位置找，而不是立刻放弃
 		state = State.ALERT
+		_scanning = false
+		_alert_left = alert_time
 		_on_attack_exit()
 
 
@@ -305,7 +329,7 @@ func _update_perception() -> void:
 ## 看过一次就记住（_seen_corpses）：否则它会围着尸体反复进入警戒、永远回不了岗位。
 func _check_corpses(delta: float) -> void:
 	# 正在追玩家 / 已经死了：别被尸体打断
-	if state == State.CHASE or state == State.ATTACK or state == State.DEAD:
+	if state == State.CHASE or state == State.ATTACK or state == State.DEAD or _investigation_from_player:
 		return
 	_corpse_timer -= delta
 	if _corpse_timer > 0.0:
@@ -322,6 +346,7 @@ func _check_corpses(delta: float) -> void:
 		if not can_see_point(corpse.global_position):
 			continue
 		_seen_corpses[id] = true
+		_scanning = false
 		last_known_pos = corpse.global_position
 		_alert_left = alert_time
 		if state == State.IDLE or state == State.PATROL:
@@ -348,7 +373,7 @@ func _ray_hits_layer(mask: int) -> bool:
 
 ## 听到噪声。这是本作的核心机制：开枪的声音就是你的位置。
 func _on_noise(pos: Vector2, radius: float, source: Node) -> void:
-	if state == State.DEAD:
+	if state == State.DEAD or state == State.CHASE or state == State.ATTACK or _investigation_from_player:
 		return
 	# 自己弄出的动静不重新定位自己。最典型的例子：敌人撞开门，
 	# 门的响声不该让它把正在追的枪声位置忘掉、站在门口发呆。
@@ -356,6 +381,7 @@ func _on_noise(pos: Vector2, radius: float, source: Node) -> void:
 		return
 	if global_position.distance_to(pos) > radius * hearing_multiplier:
 		return
+	_scanning = false
 	last_known_pos = pos
 	_alert_left = alert_time
 	if state == State.IDLE or state == State.PATROL:
@@ -401,6 +427,9 @@ func rebuild_route() -> void:
 	_waypoint_left = waypoint_timeout
 	_path = PackedVector2Array()
 	_repath_left = 0.0
+	_nav_blocked = false
+	_nav_failures = 0
+	_nav_stuck_left = 0.0
 	if state == State.IDLE or state == State.PATROL:
 		state = _default_state()
 
@@ -442,31 +471,36 @@ func _validate_waypoints() -> void:
 
 ## 走到"最后已知位置"查看。这是"看不见你之后还会追过来"的关键状态。
 func _ai_alert(delta: float) -> void:
-	if _alert_left <= 0.0:
-		state = _default_state()
-		# 搜索花掉的时间不计入路点超时，免得一结束警戒就无故跳过当前路点。
-		_waypoint_left = waypoint_timeout
-		_scanning = false
-		_on_return_home()
-		return
-
-	if global_position.distance_to(last_known_pos) > 24.0:
-		# 还没到：走过去（走导航路径，所以绕得开墙）。
-		# 阈值给到 24px：路径终点是格中心，而"最后已知位置"可能偏移到格边，
-		# 阈值太小会"永远差一点、走不到"，然后原地不停抖动。
+	_ensure_level()
+	var destination := last_known_pos
+	if _level != null:
+		var cell := _level._nearest_walkable(_level.world_to_cell(last_known_pos))
+		destination = _level.cell_center(cell)
+	if global_position.distance_to(destination) > 24.0:
 		_scanning = false
 		_move_toward_point(last_known_pos, delta, 0.9)
+		if _nav_blocked: _finish_investigation()
 		return
-
-	# 到了最后已知位置：原地左右张望，而不是站着不动
 	_slow_down(delta)
 	if not _scanning:
 		_scanning = true
 		_scan_phase = 0.0
-		_scan_center = facing
+		var toward := last_known_pos - global_position
+		_scan_center = toward.normalized() if toward.length_squared() > 1 else facing
+	_alert_left = maxf(0.0, _alert_left - delta)
+	if _alert_left <= 0.0:
+		_finish_investigation()
+		return
 	_scan_phase += delta * 2.4
-	facing = _scan_center.rotated(sin(_scan_phase) * 1.1)   # 左右各扫约 63 度
+	facing = _scan_center.rotated(sin(_scan_phase) * 1.1)
 	_sync_aim()
+
+func _finish_investigation() -> void:
+	state = _default_state()
+	_waypoint_left = waypoint_timeout
+	_scanning = false
+	_investigation_from_player = false
+	_on_return_home()
 
 
 func _ai_chase(delta: float) -> void:
@@ -492,43 +526,79 @@ func _should_attack() -> bool:
 ## 朝一个世界坐标移动。**走格子 A* 的路径，不是直线** —— 直线会被墙卡死。
 func _move_toward_point(point: Vector2, delta: float, speed_scale: float = 1.0) -> void:
 	_ensure_level()
-	var to_point: Vector2 = point - global_position
-	if to_point.length_squared() > 4.0:
-		facing = to_point.normalized()      # 始终朝着"要看的地方"，而不是当前路径点
-
+	var revision: int = _level.navigation_revision if _level != null else 0
+	var changed := _path_target.distance_squared_to(point) > 576.0 or revision != _nav_revision
+	if changed:
+		_nav_failures = 0
+		_nav_blocked = false
+		_nav_stuck_left = 0.0
+		_nav_sample = global_position
+		_path = PackedVector2Array()
+		_repath_left = 0.0
+		_nav_revision = revision
+	if _nav_blocked:
+		_slow_down(delta)
+		if state == State.PATROL: _waypoint_left = 0.0
+		return
+	_repath_left -= delta
+	if _repath_left <= 0.0:
+		var next_path := _level.find_path(global_position, point, self) if _level != null else PackedVector2Array()
+		# 独立运行敌人没有Level网格时，只有身体扫掠确认通畅才可直达，不能盲目顶墙。
+		if _level == null and _direct_move_clear(point): next_path.append(point)
+		_path_target = point
+		_repath_left = REPATH_TIME
+		if next_path.is_empty():
+			_nav_failures += 1
+			_path = PackedVector2Array()
+			if _nav_failures >= NAV_RETRIES: _nav_blocked = true
+		else:
+			# 相同路径不重置拐点索引，否则每次重寻都回追刚走过的点。
+			if next_path != _path:
+				_path = next_path
+				_path_index = 0
+			_resolved_goal = _path[_path.size()-1]
 	var move_dir := Vector2.ZERO
-	if _level != null:
-		# 目标动了、或者过了一段时间就重算路径 —— 不用每帧算
-		_repath_left -= delta
-		if _repath_left <= 0.0 or _path.is_empty() \
-				or _path_target.distance_squared_to(point) > 576.0:
-			_path = _level.find_path(global_position, point)
-			_path_index = 0
-			_path_target = point
-			_repath_left = 0.25
-
-		# 走到当前路径点附近就推进到下一个
-		while _path_index < _path.size() \
-				and global_position.distance_to(_path[_path_index]) < 8.0:
-			_path_index += 1
-		if _path_index < _path.size():
-			var to_next: Vector2 = _path[_path_index] - global_position
-			if to_next.length_squared() > 1.0:
-				move_dir = to_next.normalized()
-
-	# 兜底：完全算不出路径时才直线走，至少不站着不动。
-	# 阈值给到 24px²：走到目标格之后路径本来就为空（起点终点同一格），
-	# 若目标点又偏移到格边，直线兜底会朝着那个点来回抖 —— 所以只在真远时用。
-	if move_dir == Vector2.ZERO and _path.is_empty() and to_point.length_squared() > 576.0:
-		move_dir = to_point.normalized()
-
+	while _path_index < _path.size() and global_position.distance_to(_path[_path_index]) < 8.0:
+		_path_index += 1
+	if _path_index < _path.size():
+		var next: Vector2 = _path[_path_index]
+		if _level.navigation_segment_clear(global_position, next, self) if _level != null else _direct_move_clear(next):
+			move_dir = (next-global_position).normalized()
+		else:
+			if is_equal_approx(_repath_left, REPATH_TIME):
+				_nav_failures += 1
+				if _nav_failures >= NAV_RETRIES: _nav_blocked = true
+	# 无路径不能盲目直走；这会导致不可达目标前永远顶墙。
+	if not move_dir.is_zero_approx():
+		_nav_stuck_left += delta
+		if global_position.distance_to(_nav_sample) >= STUCK_DISTANCE:
+			_nav_sample = global_position
+			_nav_stuck_left = 0.0
+			_nav_failures = 0
+		elif _nav_stuck_left >= STUCK_TIME:
+			_nav_failures += 1
+			_nav_stuck_left = 0.0
+			_repath_left = 0.0
+			if _nav_failures >= NAV_RETRIES: _nav_blocked = true
+	else:
+		_nav_stuck_left = 0.0
+	if _nav_blocked: move_dir = Vector2.ZERO
 	velocity = velocity.move_toward(move_dir * move_speed * speed_scale, accel * delta)
 	move_and_slide()
+	if can_see_player(): facing = (player.global_position-global_position).normalized()
+	elif not move_dir.is_zero_approx(): facing = move_dir
 	_sync_aim()
 
+func _direct_move_clear(point: Vector2) -> bool:
+	var q := PhysicsShapeQueryParameters2D.new()
+	q.shape = shape.shape
+	q.transform = shape.global_transform
+	q.motion = point - global_position
+	q.collision_mask = 257
+	q.exclude = [get_rid()]
+	return get_world_2d().direct_space_state.cast_motion(q)[0] >= 0.999
 
-## 关卡把自己注册进组 "level"，敌人用它拿到寻路网格。
-## 用惰性查找是因为敌人的 _ready 早于关卡的 _ready。
+
 func _ensure_level() -> void:
 	if _level == null:
 		_level = get_tree().get_first_node_in_group("level") as Level
@@ -594,13 +664,13 @@ func _ai_melee(delta: float) -> void:
 
 # -------------------------------------------------------------- 死亡
 
-func take_damage(_amount: int = 1, _from: Vector2 = Vector2.ZERO) -> void:
+func take_damage(_amount: int = 1, _from: Vector2 = Vector2.ZERO, cause: StringName = &"generic") -> void:
 	if state == State.DEAD:
 		return
-	_die()
+	_die(false, cause, (global_position - _from).normalized())
 
 
-func _die(silent: bool = false) -> void:
+func _die(silent: bool = false, cause: StringName = &"generic", direction: Vector2 = Vector2.ZERO) -> void:
 	combat.cancel()
 	_drop_weapon()
 	state = State.DEAD
@@ -608,6 +678,9 @@ func _die(silent: bool = false) -> void:
 	remove_from_group("enemies")
 	# 进组：让同伴能"看见"这具尸体（见 _check_corpses）
 	add_to_group("corpses")
+	visual.receive_impact(direction)
+	Events.hit_resolved.emit(self, visual.head_world_position() if cause == &"execution" else global_position, direction, cause, true)
+	Events.actor_died.emit(self, global_position, direction, cause)
 	Events.enemy_died.emit(global_position)
 	# 倒地声。半径很小 —— 远处的同伴是靠**看见**尸体才知道出事了，
 	# 而不是靠听见（见 death_noise_radius 的说明）。
@@ -616,7 +689,6 @@ func _die(silent: bool = false) -> void:
 		Events.emit_noise(global_position, death_noise_radius, self)
 	_settle_corpse()
 	_on_death_fx()
-	_play_death_punch()
 
 
 ## 能不能被玩家**贴上去暗杀**。
@@ -639,23 +711,7 @@ func assassinate() -> void:
 	_die(true)
 
 
-## 死亡的一下"冲击"：闪白 + 短暂放大，再收回到尸体状态。
-##
-## 为什么值得做：`_settle_corpse` 只是把颜色调暗，等于"悄悄换成尸体"，
-## 大脑收不到"打中了"的信号。加这一下之后，即使顿帧和震动都被关掉，
-## 也能单靠画面看出"这一枪打实了"。
-func _play_death_punch() -> void:
-	var corpse := Color.WHITE
-	visual.modulate = Color(4.5, 4.5, 4.5)      # >1 的 modulate 会提亮 → 闪白
-	visual.scale = Vector2(1.7, 1.7)            # 撑大一下，像被打爆
-	visual.rotation = randf_range(-0.5, 0.5)    # 顺手被打歪一个角度
-	var t := create_tween().set_parallel(true)
-	t.tween_property(visual, "modulate", corpse, 0.14)
-	t.tween_property(visual, "scale", Vector2.ONE, 0.18).set_trans(Tween.TRANS_BACK)
-	t.tween_property(visual, "rotation", 0.0, 0.20).set_trans(Tween.TRANS_BACK)
-
-
-## 变成躺在地上的尸体。绝对 z（墙下两层），关掉碰撞。
+## 保留身份倒地动画，去掉闪白、放大和随机弹跳；层级仍由关卡计算。
 func _settle_corpse() -> void:
 	velocity = Vector2.ZERO
 	_stun_vel = Vector2.ZERO
@@ -748,3 +804,12 @@ func _on_attack_exit() -> void:
 
 func _on_death_fx() -> void:
 	pass
+
+func update_alert_marker() -> void:
+	if alert_marker == null: return
+	# 根节点常被编辑器旋转来设置出生朝向；标记位置仍应固定在世界坐标的头顶。
+	alert_marker.global_position = global_position + Vector2(-4,-24)
+	alert_marker.visible = not is_stunned() and state in [State.ALERT, State.CHASE, State.ATTACK]
+	alert_marker.text = "?" if state == State.ALERT else "!"
+	alert_marker.add_theme_color_override("font_color", Color(1,0.8,0.2) if state == State.ALERT else Color(1,0.2,0.15))
+	alert_marker.rotation = -global_rotation

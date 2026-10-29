@@ -26,6 +26,7 @@ const NAV_INSET := 6.0
 var _walkable := {}
 var _cell_size := 16.0
 var _astar: AStarGrid2D = null
+var navigation_revision := 0
 
 
 func _enter_tree() -> void:
@@ -36,6 +37,10 @@ func _enter_tree() -> void:
 func _ready() -> void:
 	_build_grid()
 	_normalize_character_layer()
+	var feedback := Node2D.new()
+	feedback.set_script(preload("res://scripts/fx/combat_feedback.gd"))
+	feedback.name = "CombatFeedback"
+	add_child(feedback)
 
 	var cam := player.get_node_or_null("Camera2D") as Camera2D
 	if cam != null:
@@ -123,6 +128,7 @@ func rebuild_navigation() -> void:
 
 
 func _build_grid() -> void:
+	navigation_revision += 1
 	_walkable.clear()
 	_astar = null
 	if floor_layer == null or walls == null:
@@ -188,7 +194,7 @@ func walkable_cell_count() -> int:
 ## 表现出来就是敌人左右扭着走，非常难看。
 ## 这里从头开始，每次尽量连到"最远的、中间没有墙的那一格"，
 ## 中间那些点全部丢掉，于是路径变成几条长直线。
-func find_path(from: Vector2, to: Vector2) -> PackedVector2Array:
+func find_path(from: Vector2, to: Vector2, body: CharacterBody2D = null) -> PackedVector2Array:
 	var out := PackedVector2Array()
 	if _astar == null:
 		return out
@@ -204,7 +210,7 @@ func find_path(from: Vector2, to: Vector2) -> PackedVector2Array:
 	var i := 0
 	while i < cells.size() - 1:
 		var j: int = cells.size() - 1
-		while j > i + 1 and not _line_clear(cells[i], cells[j]):
+		while j > i + 1 and (not _line_clear(cells[i], cells[j]) or (body != null and not navigation_segment_clear(cell_center(cells[i]), cell_center(cells[j]), body))):
 			j -= 1
 		out.append(cell_center(cells[j]))
 		i = j
@@ -264,20 +270,26 @@ func _nearest_walkable(c: Vector2i) -> Vector2i:
 ## 血迹是**永久贴花**，画在专属背景层 Blood 上。
 ## 层级：地板(-10) < 血迹(-5) < 尸体(墙-2) < 掉落武器(-1) < 墙(0) < 人物(2)。
 func add_blood(pos: Vector2) -> void:
-	# 一滩血由几个不规则血斑叠成，比单个圆自然得多
-	for i in 3:
-		var blob := Polygon2D.new()
-		blob.polygon = _blob_poly(randf_range(4.0, 9.0), 9, 0.45)
-		blob.color = Color(0.42, 0.05, 0.08, randf_range(0.55, 0.8))
-		blob.position = pos + Vector2(randf_range(-10.0, 10.0), randf_range(-8.0, 8.0))
-		blob.rotation = randf() * TAU
-		blood.add_child(blob)
-		# 从 0.35 缩放出来，做出"溅开"的感觉 —— 保留打击感，但不离开背景层
-		blob.scale = Vector2(0.35, 0.35)
-		create_tween().tween_property(blob, "scale", Vector2.ONE, 0.1)
+	var pool := Node2D.new()
+	pool.set_script(preload("res://scripts/fx/blood_pool.gd"))
+	pool.level = self
+	pool.position = blood.to_local(pos)
+	blood.add_child(pool)
+
+## 身体扫掠而非中心射线；门不挡移动，家具只在这项移动查询里参与。
+func navigation_segment_clear(from: Vector2, to: Vector2, body: CharacterBody2D) -> bool:
+	var collision := body.get_node("CollisionShape2D") as CollisionShape2D
+	var q := PhysicsShapeQueryParameters2D.new()
+	q.shape = collision.shape
+	q.transform = collision.global_transform
+	q.transform.origin += from - body.global_position
+	q.motion = to - from
+	q.collision_mask = 257
+	q.exclude = [body.get_rid()]
+	q.margin = 0.1
+	return get_world_2d().direct_space_state.cast_motion(q)[0] >= 0.999
 
 
-## 半径带抖动的多边形，看起来像一滩血而不是一个圆
 func _blob_poly(radius: float, segments: int, jitter: float) -> PackedVector2Array:
 	var pts := PackedVector2Array()
 	var phase: float = randf() * TAU

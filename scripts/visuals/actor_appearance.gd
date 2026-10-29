@@ -9,6 +9,7 @@ extends Resource
 @export var pixels_per_unit: float = 4.0
 @export var body_origin_px := Vector2(32, 32)
 @export var corpse_origin_px := Vector2(64, 64)
+@export var head_anchor_px := Vector2(90, 64)
 @export var outfit := Color(0.12, 0.52, 0.65)
 @export var accent := Color(0.65, 0.95, 1.0)
 @export var death_duration: float = 0.20

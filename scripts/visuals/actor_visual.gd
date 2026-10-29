@@ -20,6 +20,9 @@ var _stunned := false
 var _life_elapsed := 0.0
 var _feedback_left := 0.0
 var _facing_angle := 0.0
+var _executing := false
+var _impact_left := 0.0
+var _impact_direction := Vector2.ZERO
 var _weapon_view: WeaponView
 
 func _ready() -> void:
@@ -138,6 +141,12 @@ func _process(delta: float) -> void:
 	# 挂点只传递显示位移；攻击采样始终以角色身体为原点，不跟随美术后坐力。
 	if is_instance_valid(_weapon_view):
 		_weapon_view.set_mount_offset((_weapon_view.get_parent() as Node2D).to_local(weapon_mount.global_position))
+	if _impact_left > 0:
+		_impact_left = maxf(0, _impact_left - delta)
+		corpse.position = _impact_direction * sin(_impact_left / 0.12 * PI) * 2.0
+	else:
+		corpse.position = Vector2.ZERO
+	if _executing: return
 	_life_elapsed += delta
 	if _dead:
 		if life_state == &"dying":
@@ -220,3 +229,42 @@ func _build_feedback() -> void:
 		anim.track_insert_key(track, anim.length, Vector2.ZERO)
 		library.add_animation(action, anim)
 	animation_player.add_animation_library("", library)
+
+func head_world_position() -> Vector2:
+	return corpse.to_global(appearance.head_anchor_px - appearance.corpse_origin_px)
+
+func receive_impact(direction: Vector2) -> void:
+	_impact_direction = direction.rotated(-global_rotation)
+	_impact_left = 0.12
+
+func execution_pose(progress: float, head_distance := 14.0) -> void:
+	_executing = true
+	animation_player.stop()
+	last_action = &"execute"
+	action_phase = &"execution"
+	phase_progress = progress
+	_sample(upper, &"execute", progress, _idle_name())
+	_sample(arms, &"execute", progress, _idle_name())
+	var time := progress * 0.9
+	var start := 0.0
+	var finish := 0.20
+	if time > 0.45:
+		start = 0.45
+		finish = 0.70
+	elif time > 0.20:
+		start = 0.20
+		finish = 0.45
+	var p := clampf((time-start)/(finish-start),0,1)
+	var reach := pow(p, 4.0) if time <= 0.70 else 1.0 - clampf((time-0.70)/0.20,0,1)
+	$UpperRig.position = Vector2(1.5, 0).rotated(_facing_angle - global_rotation)
+	# 物理角色不瞬移；手臂按目标头部锚点伸展，避免14px边界处看起来隔空砸头。
+	arms.position = Vector2(lerpf(-2, maxf(0, head_distance - 8.5), reach), -2 + reach * 2)
+	arms.rotation = lerpf(-0.6, 0.15, reach)
+	legs.stop()
+
+func end_execution() -> void:
+	_executing = false
+	$UpperRig.position = Vector2.ZERO
+	arms.position = Vector2.ZERO
+	arms.rotation = 0
+	_idle()

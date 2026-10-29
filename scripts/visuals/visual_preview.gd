@@ -22,7 +22,6 @@ func _ready() -> void:
 		item.position = Vector2(112 + i * 36, 232)
 	_status = $HUD/Status
 	_help = $HUD/Help
-	Events.enemy_died.connect(_on_kill)
 
 func _process(_delta: float) -> void:
 	if _status == null:
@@ -40,15 +39,14 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		return
 	if event.keycode == KEY_R:
 		get_tree().reload_current_scene()
-	elif event.keycode == KEY_TAB:
+	elif event.keycode == KEY_F8:
 		# 仅在预览暂停敌人物理（含眩晕计时），显示仍播放，便于安全观察动作。
 		for enemy: Enemy in $Enemies.get_children():
 			enemy.set_physics_process(not enemy.is_physics_processing())
-		_help.text = "Tab 切换 AI · R 重置房间；1～7 换样板武器，0 空手"
+		_help.text = "F8 切换 AI · R 重置房间；1～7 换样板武器，0 空手"
 	elif event.keycode == KEY_0:
 		player.equip_weapon(null)
 	elif event.keycode >= KEY_1 and event.keycode <= KEY_7:
 		player.equip_weapon(WeaponState.new(load("res://resources/weapons/%s.tres" % IDS[event.keycode - KEY_1])))
 
-func _on_kill(pos: Vector2) -> void:
-	add_blood(pos)
+

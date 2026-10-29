@@ -114,6 +114,7 @@ func _verify_enemy(path: String) -> void:
 	_check(label + " 警觉时实际走向噪声", e.global_position.distance_to(noise_pos) < noise_start - 5.0)
 	e.call("rebuild_route")
 	_check(label + " 重建路线不会打断警觉", int(e.get("state")) == S_ALERT)
+	await _frames(90) # 新规则：先实际走到调查点，路程不消耗搜索时间
 	e.set("_alert_left", 0.0)
 	await _frames(2)
 	_check(label + " 警觉结束回到巡逻", int(e.get("state")) == S_PATROL)
@@ -145,6 +146,7 @@ func _verify_enemy(path: String) -> void:
 	await _frames(2)
 	e.set_physics_process(false)
 	e.set("_alert_left", 0.0)
+	e.set("last_known_pos", e.global_position)
 	e.call("_ai_alert", 0.0)
 	for mark in [point1, point2]:
 		e.remove_child(mark)

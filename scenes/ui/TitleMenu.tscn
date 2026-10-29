@@ -1,0 +1,75 @@
+[gd_scene format=3]
+[ext_resource type="Script" path="res://scripts/ui/menu_page.gd" id="1"]
+[ext_resource type="Theme" path="res://resources/ui/menu_theme.tres" id="2"]
+[node name="TitleMenu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1")
+page_theme = ExtResource("2")
+[node name="Shade" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+color = Color(0.025,0.035,0.05,1)
+[node name="Background" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 6
+[node name="Margin" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_bottom = 24
+[node name="Column" type="VBoxContainer" parent="Margin"]
+layout_mode = 2
+theme_override_constants/separation = 20
+[node name="Heading" type="Label" parent="Margin/Column"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96,0.78,0.46,1)
+theme_override_font_sizes/font_size = 28
+text = "SPEEDKILL"
+horizontal_alignment = 1
+[node name="Body" type="HBoxContainer" parent="Margin/Column"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 28
+alignment = 1
+[node name="Buttons" type="VBoxContainer" parent="Margin/Column/Body"]
+custom_minimum_size = Vector2(240,0)
+layout_mode = 2
+theme_override_constants/separation = 10
+alignment = 1
+[node name="Start" type="Button" parent="Margin/Column/Body/Buttons"]
+custom_minimum_size = Vector2(0,38)
+layout_mode = 2
+text = "开始游戏"
+metadata/action = "start"
+[node name="Tutorial" type="Button" parent="Margin/Column/Body/Buttons"]
+custom_minimum_size = Vector2(0,38)
+layout_mode = 2
+text = "教程"
+metadata/action = "tutorial"
+[node name="Settings" type="Button" parent="Margin/Column/Body/Buttons"]
+custom_minimum_size = Vector2(0,38)
+layout_mode = 2
+text = "设置"
+metadata/action = "settings"
+[node name="Quit" type="Button" parent="Margin/Column/Body/Buttons"]
+custom_minimum_size = Vector2(0,38)
+layout_mode = 2
+text = "退出游戏"
+metadata/action = "quit"

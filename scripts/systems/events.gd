@@ -32,6 +32,8 @@ signal player_spawned(player: Node2D)
 signal ammo_changed(current: int, capacity: int)
 ## 先通知武器类型，再通知弹药；空手、刀与空枪不能继续显示成装填中。
 signal weapon_changed(definition: Resource)
+## null表示解除；HUD只订阅，不参与选目标。
+signal lock_changed(enemy: Node2D)
 ## 通关。
 signal level_cleared(time_sec: float, kills: int)
 
@@ -41,3 +43,7 @@ func emit_noise(pos: Vector2, radius: float, source: Node = null) -> void:
 	if radius <= 0.0:
 		return
 	noise_emitted.emit(pos, radius, source)
+
+## 命中来源与是否致命由玩法确定，显示端不得重新结算。
+signal hit_resolved(victim: Node2D, point: Vector2, direction: Vector2, cause: StringName, lethal: bool)
+signal actor_died(victim: Node2D, point: Vector2, direction: Vector2, cause: StringName)

@@ -155,7 +155,7 @@ func _sweep(a: float, b: float, previous_origin: Vector2, origin: Vector2) -> vo
 		var target: Object = hit.collider
 		if target.has_method("take_damage") and not _hits.has(target.get_instance_id()):
 			_hits[target.get_instance_id()] = true
-			target.call("take_damage", instance.definition.damage, base)
+			target.call("take_damage", instance.definition.damage, base, &"melee")
 
 func _push_hit(origin: Vector2) -> void:
 	if not _hits.is_empty():

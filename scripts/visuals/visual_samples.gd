@@ -80,6 +80,7 @@ static func _actor_image(part: String, action: String, index: int, count: int, o
 			_rect(img, Rect2i(55, 19, 3, 4), Color(1.0, 0.9, 0.2))
 	else:
 		var extension := 4 if action.ends_with("active") else (int(phase * 3.0) if action in ["throw", "pickup"] else 0)
+		if action == "execute": extension = int(phase * 7.0)
 		_outlined(img, Rect2i(30, 10, 12, 9), outfit)
 		_outlined(img, Rect2i(30, 45, 12, 9), outfit)
 		_outlined(img, Rect2i(40 + extension, 15, 13, 8), outfit)

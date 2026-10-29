@@ -156,6 +156,14 @@ func _note(key: String) -> void:
 		history.pop_front()
 
 
+## 整局结束后主菜单不再播放旧战斗声；普通关卡重开仍保留原来的跨关卡音效。
+func stop_session_audio() -> void:
+	_global_player.stop()
+	for voice in get_children():
+		if voice is AudioStreamPlayer2D:
+			voice.stop()
+			voice.queue_free()
+
 ## 清空记录。冒烟测试用来隔离每一段观察。
 func clear_history() -> void:
 	history.clear()

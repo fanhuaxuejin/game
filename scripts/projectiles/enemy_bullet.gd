@@ -91,5 +91,5 @@ func _hit(body: Object, pos: Vector2, normal: Vector2) -> void:
 	_spent = true
 	Events.bullet_impact.emit(pos, normal)
 	if is_instance_valid(body) and body.has_method("take_damage"):
-		body.call("take_damage", damage, global_position)
+		body.call("take_damage", damage, pos - direction, &"bullet")
 	queue_free()

@@ -135,4 +135,4 @@ offset_right = 14.0
 offset_bottom = 332.0
 theme_override_colors/font_color = Color(0.20392157, 0.18431373, 0.16470589, 1)
 theme_override_font_sizes/font_size = 12
-text = "R 重置 · Tab AI · C 碰撞 · 1～7 换装 / 0 空手 · 右键投掷 / E 拾取"
+text = "R 重置 · F8 AI · C 碰撞 · 1～7 换装 / 0 空手 · 右键投掷 / E 拾取"

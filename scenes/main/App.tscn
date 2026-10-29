@@ -1,0 +1,9 @@
+[gd_scene format=3]
+[ext_resource type="Script" path="res://scripts/main/app.gd" id="1"]
+[node name="App" type="Node"]
+process_mode = 3
+script = ExtResource("1")
+[node name="GameHost" type="Node" parent="."]
+process_mode = 1
+[node name="MenuLayer" type="CanvasLayer" parent="."]
+layer = 100

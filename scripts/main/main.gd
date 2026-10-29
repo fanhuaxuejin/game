@@ -21,9 +21,6 @@ var _live_levels: Array[String] = []
 ## 清场后等多久自动进下一关
 const ADVANCE_DELAY := 1.6
 
-## 击杀时溅出的血点数量
-const KILL_BLOOD_DOTS := 16
-
 @onready var level_host: Node2D = $LevelHost
 @onready var fx: Node2D = $FX
 @onready var hint_label: Label = $HUD/HintLabel
@@ -37,6 +34,8 @@ var level_index: int = 0
 var kills: int = 0
 var _hud_weapon: Resource = null
 
+var _menu_paused_at := -1
+var _resume_guard := false
 var _dead: bool = false
 var _cleared: bool = false
 var _advance_left: float = -1.0
@@ -56,7 +55,7 @@ func _enter_tree() -> void:
 func _ready() -> void:
 	death_panel.visible = false
 	clear_label.visible = false
-	hint_label.text = "WASD 移动 · 左键射击 · 右键投掷 · E 拾取 · R 重开"
+	hint_label.hide()
 	# 只保留真的存在的关卡文件（清单里删掉的会被跳过并警告）
 	for p in LEVELS:
 		if ResourceLoader.exists(p):
@@ -121,6 +120,18 @@ func _load_path(path: String) -> void:
 	_update_status()
 
 
+func set_menu_paused(value: bool) -> void:
+	if value and _menu_paused_at < 0:
+		_menu_paused_at = Time.get_ticks_msec()
+	elif not value and _menu_paused_at >= 0:
+		_started_at += (Time.get_ticks_msec() - _menu_paused_at) / 1000.0
+		_menu_paused_at = -1
+
+func resume_from_menu() -> void:
+	_resume_guard = true
+	if level != null:
+		level.player.resume_from_menu()
+
 func _process(delta: float) -> void:
 	# 清场后延迟一小会儿再进下一关，让玩家看清最后的击杀
 	if _advance_left > 0.0:
@@ -133,6 +144,11 @@ func _process(delta: float) -> void:
 				clear_label.text = "全部通关！按 R 重开"
 		return
 
+	# 菜单恢复帧可能仍带着左键或R状态，必须先松手，不能把继续误当成重开。
+	if _resume_guard:
+		if not Input.is_action_pressed("restart") and not Input.is_action_pressed("fire"):
+			_resume_guard = false
+		return
 	var wants_restart: bool = Input.is_action_just_pressed("restart")
 	# 迈阿密热线式：死后按左键也能重开，手不用离开鼠标
 	if _dead and Input.is_action_just_pressed("fire"):
@@ -146,12 +162,8 @@ func _update_status() -> void:
 	status_label.text = "击杀 %d · 剩余 %d" % [kills, get_tree().get_nodes_in_group("enemies").size()]
 
 
-func _on_enemy_died(pos: Vector2) -> void:
+func _on_enemy_died(_pos: Vector2) -> void:
 	kills += 1
-	if level != null:
-		level.add_blood(pos)
-	_spawn_blood_burst(pos)
-	_spawn_kill_flash(pos)
 	_update_status()
 	if not _cleared and get_tree().get_nodes_in_group("enemies").is_empty():
 		_cleared = true
@@ -171,45 +183,8 @@ func _on_player_died() -> void:
 ##
 ## 用代码现场生成 Polygon2D，而不是提前做一个粒子系统：
 ## 数量少、活得短，生成式反而更好调、也不用管资源。
-func _spawn_blood_burst(pos: Vector2) -> void:
-	for i in KILL_BLOOD_DOTS:
-		var half := randf_range(1.5, 3.5)
-		var dot := Polygon2D.new()
-		dot.polygon = PackedVector2Array([
-			Vector2(-half, -half), Vector2(half, -half),
-			Vector2(half, half), Vector2(-half, half),
-		])
-		dot.color = Color(0.62, 0.05, 0.07).lightened(randf_range(0.0, 0.25))
-		dot.position = pos
-		fx.add_child(dot)
-
-		var target := pos + Vector2.RIGHT.rotated(randf_range(0.0, TAU)) * randf_range(18.0, 72.0)
-		var life := randf_range(0.26, 0.42)
-		var t := create_tween().set_parallel(true)
-		t.tween_property(dot, "position", target, life).set_ease(Tween.EASE_OUT)
-		t.tween_property(dot, "modulate:a", 0.0, life)
-		t.chain().tween_callback(dot.queue_free)
 
 
-## 击杀处的一记白闪。
-##
-## 比溅血更"响"，而且位置精准 —— 玩家一眼就知道"是这里、这一下"。
-## 用菱形而不是圆形：平涂色块的美术风格下，菱形更搭，也不用做圆的多边形。
-func _spawn_kill_flash(pos: Vector2) -> void:
-	var flash := Polygon2D.new()
-	flash.polygon = PackedVector2Array([
-		Vector2(0.0, -6.0), Vector2(6.0, 0.0), Vector2(0.0, 6.0), Vector2(-6.0, 0.0),
-	])
-	flash.color = Color(1.0, 0.97, 0.85, 0.95)
-	flash.position = pos
-	flash.scale = Vector2(0.4, 0.4)
-	flash.rotation = randf_range(0.0, TAU)
-	fx.add_child(flash)
-
-	var t := create_tween().set_parallel(true)
-	t.tween_property(flash, "scale", Vector2(3.6, 3.6), 0.15).set_ease(Tween.EASE_OUT)
-	t.tween_property(flash, "modulate:a", 0.0, 0.15)
-	t.chain().tween_callback(flash.queue_free)
 
 
 func _on_weapon_changed(definition: Resource) -> void:

@@ -11,22 +11,14 @@ extends Node
 ## 只发 Events 信号，由这里统一决定"该有什么感觉"。
 ## 好处是调手感不用去翻开枪、开门的代码。
 
-## 击杀时的顿帧。太长会让连杀变得拖沓；0.08 秒是"一顿"和"卡住"之间的分界。
-const HIT_STOP_KILL := 0.08
-## 玩家死亡时的顿帧。要更长更重 —— 这是一个"事件"，不是一次操作。
-const HIT_STOP_DEATH := 0.15
+## 只保留短命中顿帧。死亡反馈不再叠加震屏、推镜或另一段停顿。
+const HIT_STOP_KILL := 0.04
 ## 顿帧时的时间缩放。**不要设成 0**：完全静止会让人以为游戏卡死了。
 const HIT_STOP_SCALE := 0.04
 
 ## 开火时额外叠的随机抖动。连发时会积成一个持续的低频轰鸣，
 ## 真正表达"威力"的是定向后坐（见 game_camera.gd 的 kick）。
 const FIRE_TRAUMA := 0.18
-## 击杀 / 死亡时的抖动与镜头推进
-const KILL_TRAUMA := 0.48
-const DEATH_TRAUMA := 0.80
-const KILL_ZOOM_PUNCH := 0.07
-const DEATH_ZOOM_PUNCH := 0.10
-
 ## 清场慢动作
 const SLOWMO_SCALE := 0.35
 const SLOWMO_TIME := 0.9
@@ -35,13 +27,21 @@ const SLOWMO_TIME := 0.9
 ## 否则会把正在进行的慢动作一起取消掉。
 var _stopping: bool = false
 var _slowing: bool = false
+var _session_generation := 0
+
+func reset_session() -> void:
+	# 旧会话的真实时间timer仍会返回；代次检查阻止它覆盖新一局的慢动作。
+	_session_generation += 1
+	_stopping = false
+	_slowing = false
+	Engine.time_scale = 1.0
+	AudioServer.playback_speed_scale = 1.0
 
 
 func _enter_tree() -> void:
 	Events.bullet_fired.connect(_on_bullet_fired)
 	Events.enemy_fired.connect(_on_enemy_fired)
-	Events.enemy_died.connect(_on_enemy_died)
-	Events.player_died.connect(_on_player_died)
+	Events.hit_resolved.connect(_on_hit_resolved)
 	Events.door_moved.connect(_on_door_moved)
 	Events.level_cleared.connect(_on_level_cleared)
 
@@ -60,16 +60,10 @@ func _on_enemy_fired(_pos: Vector2) -> void:
 	_shake(0.09)
 
 
-func _on_enemy_died(_pos: Vector2) -> void:
+func _on_hit_resolved(_victim: Node2D, _point: Vector2, _direction: Vector2, _cause: StringName, _lethal: bool) -> void:
 	hit_stop(HIT_STOP_KILL)
-	_shake(KILL_TRAUMA)
-	_punch_zoom(KILL_ZOOM_PUNCH)
 
 
-func _on_player_died() -> void:
-	hit_stop(HIT_STOP_DEATH)
-	_shake(DEATH_TRAUMA)
-	_punch_zoom(DEATH_ZOOM_PUNCH)
 
 
 func _on_door_moved(_pos: Vector2, power: float) -> void:
@@ -90,7 +84,9 @@ func hit_stop(duration: float, scale: float = HIT_STOP_SCALE) -> void:
 		return          # 已经在顿帧里就不叠加，否则连杀会把画面卡成一坨
 	_stopping = true
 	Engine.time_scale = scale
+	var generation := _session_generation
 	await get_tree().create_timer(duration, true, false, true).timeout
+	if generation != _session_generation: return
 	_stopping = false
 	Engine.time_scale = SLOWMO_SCALE if _slowing else 1.0
 
@@ -106,7 +102,9 @@ func slow_mo() -> void:
 	# 音频也一起慢：AudioServer.playback_speed_scale 会**同时**降音调和拉长时长。
 	# 不设这一句的话，画面慢下来、枪声照常，听起来会像"声音飘在画面外面"。
 	AudioServer.playback_speed_scale = SLOWMO_SCALE
+	var generation := _session_generation
 	await get_tree().create_timer(SLOWMO_TIME, true, false, true).timeout
+	if generation != _session_generation: return
 	_slowing = false
 	AudioServer.playback_speed_scale = 1.0
 	if not _stopping:

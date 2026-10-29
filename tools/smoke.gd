@@ -216,7 +216,7 @@ func _initialize() -> void:
 	_check("无遮挡时一枪击杀", _state(victim) == S_DEAD)
 	_check("击杀计数 = 1", int(_main.get("kills")) == 1)
 	_check("剩余敌人 = %d" % (initial_enemies - 1), _enemies().size() == initial_enemies - 1)
-	_check("击杀在背景层留下了血迹贴花", blood.get_child_count() >= 3)
+	_check("击杀在背景层留下了血迹贴花", blood.get_child_count() == 1 and blood.get_child(0).is_in_group("blood_pools"))
 	_check("尸体改用绝对 z", victim.z_as_relative == false)
 	# 层级要用**有效 z**（沿父链累加）比，不能只比各自的 z_index。
 	# ⚠️ 这个坑踩过两次：尸体以前写死绝对 z=1，而关卡里 Player 的有效 z 可能只有 0
@@ -440,7 +440,7 @@ func _initialize() -> void:
 	_check("被门撞退 %.0f px（%.1f 格，要求 1~2 格）" % [knocked, knocked / 16.0],
 			knocked >= 12.0 and knocked <= 36.0)
 
-	# ②续 贴上去补刀：晕眩中的敌人被玩家一碰就死
+	# ②续 手动处决：接近倒地目标不再自动造成伤害
 	#     （被门撞退的方向是门板的切线方向，不一定在玩家的直线上 ——
 	#      所以这里直接把玩家贴到晕眩的敌人身上，单独验证"接触补刀"）
 	player.set_physics_process(true)
@@ -448,7 +448,10 @@ func _initialize() -> void:
 	for i in 6:
 		player.set("velocity", Vector2.ZERO)
 		await physics_frame
-	_check("玩家贴上去补刀 → 击杀晕眩的敌人", _state(door_victim) == S_DEAD)
+	_check("靠近不自动击杀倒地敌人", _state(door_victim) != S_DEAD)
+	player.get("execution").call("start")
+	player.get("execution").call("tick", 0.90)
+	_check("F处决动作后击杀晕眩敌人", _state(door_victim) == S_DEAD)
 
 	# ③ 反方向：玩家从东边朝西走，门就该往西甩
 	var d2 := _door(1) as Node2D
@@ -811,7 +814,7 @@ func _initialize() -> void:
 		_check("开枪 → 定向后坐 %.1f px，且朝瞄准的反方向" % kick.length(),
 				kick.length() > 3.0 and kick.normalized().dot(-aim_dir) > 0.9)
 
-		# 击杀 → 顿帧 + 震屏 + 镜头推进 + 闪白放大
+		# 击杀 → 短顿帧；不再叠加震屏、推镜、闪白或放大
 		cam.set("trauma", 0.0)
 		cam.set("_zoom_punch", 0.0)
 		var punch_target := _enemy("Enemy_01")
@@ -822,16 +825,16 @@ func _initialize() -> void:
 		var vis_scale: float = vis.scale.x
 		var vis_bright: float = vis.modulate.r
 		# ⚠️ 顿帧必须**同步**读，不能等一帧再读：
-		# HIT_STOP_KILL 只有 0.08 秒，而且是**真实时间**计时的。
-		# 中间但凡有一帧超过 80ms（比如上一幕刚跑完上千条射线抽样），
+		# HIT_STOP_KILL 只有 0.04 秒，而且是**真实时间**计时的。
+		# 中间但凡有一帧超过 40ms（比如上一幕刚跑完上千条射线抽样），
 		# 等一帧再读就会读到 1.00，这条就变成偶发假失败。
 		var kill_scale: float = Engine.time_scale
 		await process_frame
 		_check("击杀 → 顿帧（time_scale=%.2f）" % kill_scale, kill_scale < 0.5)
-		_check("击杀 → 震屏（trauma=%.2f）" % kill_trauma, kill_trauma > 0.0)
-		_check("击杀 → 镜头推进（_zoom_punch=%.3f）" % punch, punch > 0.03)
-		_check("击杀 → 敌人闪白并放大（scale=%.2f 亮度=%.1f）" % [vis_scale, vis_bright],
-				vis_scale > 1.1 and vis_bright > 1.0)
+		_check("击杀不额外震屏（trauma=%.2f）" % kill_trauma, is_zero_approx(kill_trauma))
+		_check("击杀不额外推镜（_zoom_punch=%.3f）" % punch, is_zero_approx(punch))
+		_check("击杀不闪白或放大（scale=%.2f 亮度=%.1f）" % [vis_scale, vis_bright],
+				is_equal_approx(vis_scale,1.0) and is_equal_approx(vis_bright,1.0))
 
 		# ⚠️ 最要紧的一条：顿帧必须自己弹回来。
 		# 卡在 0.04 的话整个游戏会永远慢动作，而且是静默的。
@@ -1189,6 +1192,11 @@ func _weapon_arena() -> void:
 	player.set_process(false)
 	player.global_position = Vector2(1400, 1400)
 	player.get_node("Aim").global_rotation = 0
+	# 新寻路不再对无地板区域盲目直走；战斗沙盒在内存补足自己的可达地板。
+	for y in range(82, 96):
+		for x in range(82, 101):
+			_level().floor_layer.set_cell(Vector2i(x,y),0,Vector2i.ZERO)
+	_level().rebuild_navigation()
 	for e in _enemies():
 		e.global_position = Vector2(3000, 3000)
 	_equip_case(player, "")
@@ -1239,7 +1247,11 @@ func _weapon_system_regressions() -> void:
 	wall.queue_free()
 	await _settle()
 	player.call("_try_contact_kill")
-	_check("分离后重新靠近可自动处决", _state(mark) == S_DEAD)
+	_check("分离后靠近也不自动处决", _state(mark) != S_DEAD)
+	player.get("combat").call("cancel")
+	player.get("execution").call("start")
+	player.get("execution").call("tick",0.90)
+	_check("手动三击处决致命", _state(mark) == S_DEAD)
 	_check("缴械后处决不重复掉落", get_nodes_in_group("dropped_weapons").size() == 1)
 
 	await _weapon_arena()
@@ -1535,13 +1547,23 @@ func _combat_throw_regressions() -> void:
 	_check("投掷命中击晕而不致死", observer.call("is_stunned") and _state(observer) != S_DEAD)
 	_check("命中产生向前击退", (observer.get("velocity") as Vector2).x > 0)
 	observer.set_physics_process(false)
-	_check("命中后投掷武器和被缴械的敌枪都可回收", get_nodes_in_group("dropped_weapons").size() == 2)
+	# 命中人 = 武器损坏（新规则）：不再进 dropped_weapons，只留像素碎片。
+	for frame in range(2):
+		await physics_frame
+	_check("命中敌人后武器碎裂、不留下可回收残骸",
+			get_nodes_in_group("thrown_weapons").is_empty()
+			and get_nodes_in_group("dropped_weapons").size() == 1)
+	_check("碎裂喷出像素碎片", get_nodes_in_group("weapon_debris").size() > 0)
+	_check("被缴械的敌枪仍可回收", get_nodes_in_group("dropped_weapons").size() == 1)
 	_check("投出和落地没有 AI 噪声", quiet[0] == 0)
 	_events().noise_emitted.disconnect(noise_cb)
 	player.global_position = observer.global_position - Vector2(8, 0)
 	await _settle()
 	player.call("_try_contact_kill")
-	_check("空手仍可补刀投掷击晕的敌人", _state(observer) == S_DEAD and player.get("weapon") == null)
+	player.get("combat").call("cancel")
+	player.get("execution").call("start")
+	player.get("execution").call("tick",0.90)
+	_check("空手可手动处决投掷击晕敌人", _state(observer) == S_DEAD and player.get("weapon") == null)
 	await _wait_normal_time()
 	var ground := get_nodes_in_group("dropped_weapons")[0] as Node2D
 	var pickup_wall := StaticBody2D.new()

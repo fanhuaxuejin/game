@@ -1,0 +1,39 @@
+[gd_scene format=3 uid="uid://7bsx8gmmj7so"]
+
+[ext_resource type="Script" uid="uid://u8mjjoubvkci" path="res://scripts/levels/level.gd" id="1_level"]
+[ext_resource type="TileSet" uid="uid://dm6s61wa70hny" path="res://resources/tiles/ResidentialTileSet.tres" id="2_tiles"]
+[ext_resource type="PackedScene" path="res://scenes/player/Player.tscn" id="3_player"]
+
+[node name="Level_template" type="Node2D" unique_id=991420025]
+script = ExtResource("1_level")
+level_name = "模板"
+room_rect = Rect2(0, 0, 480, 320)
+
+[node name="Floor" type="TileMapLayer" parent="." unique_id=15462709]
+z_index = -10
+position = Vector2(1, 0)
+scale = Vector2(0.25, 0.25)
+tile_set = ExtResource("2_tiles")
+collision_enabled = false
+navigation_enabled = false
+
+[node name="Blood" type="Node2D" parent="." unique_id=1963866430]
+z_index = -5
+
+[node name="Walls" type="TileMapLayer" parent="." unique_id=2058347832]
+scale = Vector2(0.25, 0.25)
+tile_set = ExtResource("2_tiles")
+navigation_enabled = false
+
+[node name="Doors" type="Node2D" parent="." unique_id=1315628961]
+
+[node name="Furniture" type="Node2D" parent="." unique_id=1590027543]
+
+[node name="Enemies" type="Node2D" parent="." unique_id=758876575]
+z_index = 2
+
+[node name="Projectiles" type="Node2D" parent="." unique_id=1752330070 groups=["projectile_parent"]]
+
+[node name="Player" parent="." unique_id=1474995041 instance=ExtResource("3_player")]
+z_index = 2
+position = Vector2(240, 160)

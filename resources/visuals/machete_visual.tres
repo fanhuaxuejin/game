@@ -11,3 +11,5 @@ grip_px = Vector2(8, 16)
 muzzle_px = Vector2(120, 16)
 tip_px = Vector2(120, 16)
 ground_center_px = Vector2(64, 17)
+held_tilt_deg = -60.0
+held_shift = Vector2(0.4, 2.4)

@@ -14,6 +14,13 @@ const THROWN_SCENE := preload("res://scenes/projectiles/ThrownWeapon.tscn")
 @onready var muzzle: Marker2D = $Aim/Muzzle
 @onready var muzzle_flash: CanvasItem = $Aim/Muzzle/Flash
 @onready var actor_visual: ActorVisual = $Body
+const AIM_LOCK := preload("res://scripts/player/aim_lock.gd")
+const LOCK_RETICLE := preload("res://scripts/visuals/lock_reticle.gd")
+var aim_lock: RefCounted
+var lock_target: Node2D:
+	get: return aim_lock.target() if aim_lock != null else null
+const EXECUTION := preload("res://scripts/player/execution.gd")
+var execution: RefCounted
 var combat: WeaponCombat
 var weapon_instance: WeaponState:
 	get: return combat.instance if combat != null else null
@@ -27,6 +34,8 @@ var is_dead := false
 var _stun_left := 0.0
 var _flash_left := 0.0
 var _fire_armed := false
+var _menu_input_blocked := false
+var _menu_resume_frame := -10
 
 func _ready() -> void:
 	combat = WeaponCombat.new()
@@ -39,7 +48,47 @@ func _ready() -> void:
 	# 左键同时是死亡重开键，出生/拾取时必须等松手，不能凭空发出攻击。
 	_fire_armed = not Input.is_action_pressed("fire")
 	equip_weapon(WeaponState.new(weapon) if weapon != null else null)
+	var reticle := Node2D.new()
+	reticle.set_script(LOCK_RETICLE)
+	reticle.name = "LockReticle"
+	add_child(reticle)
+	aim_lock = AIM_LOCK.new()
+	aim_lock.actor = self
+	aim_lock.reticle = reticle
+	aim_lock.clear()
+	execution = EXECUTION.new()
+	execution.actor = self
 	Events.player_spawned.emit(self)
+
+func _unhandled_input(event: InputEvent) -> void:
+	if is_dead or execution.active or _menu_input_blocked or event.is_echo():
+		return
+	if event.is_action_pressed("lock"):
+		aim_lock.toggle_requested = true
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("cycle_target") and aim_lock.enabled:
+		aim_lock.cycle_requested = true
+		get_viewport().set_input_as_handled()
+
+func resume_from_menu() -> void:
+	_menu_input_blocked = true
+	_menu_resume_frame = Engine.get_physics_frames()
+	_fire_armed = false
+	aim_lock.toggle_requested = false
+	aim_lock.cycle_requested = false
+
+func _menu_input_ready() -> bool:
+	if not _menu_input_blocked: return true
+	if Engine.get_physics_frames() <= _menu_resume_frame + 1: return false
+	for action in ["fire","throw_weapon","pickup","lock","cycle_target","execute"]:
+		if Input.is_action_pressed(action): return false
+	_menu_input_blocked = false
+	return true
+
+func _exit_tree() -> void:
+	if execution != null: execution.cancel()
+	if aim_lock != null:
+		aim_lock.clear()
 
 func equip_weapon(value: WeaponState) -> void:
 	combat.equip(value)
@@ -70,13 +119,18 @@ func _physics_process(delta: float) -> void:
 		if not is_stunned():
 			modulate = Color.WHITE
 		return
+	if execution.active:
+		execution.tick(delta)
+		return
+	if _menu_input_ready() and Input.is_action_just_pressed("execute") and execution.start():
+		return
 	var dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	velocity = velocity.move_toward(dir * speed, (accel if dir != Vector2.ZERO else friction) * delta)
 	move_and_slide()
 	combat.tick(delta)
 	if is_dead or is_stunned():
 		return
-	_try_contact_kill()
+	if not _menu_input_ready(): return
 	if Input.is_action_just_pressed("throw_weapon"):
 		_throw_weapon()
 		return
@@ -93,14 +147,18 @@ func _physics_process(delta: float) -> void:
 func _process(delta: float) -> void:
 	_flash_left = maxf(_flash_left - delta, 0.0)
 	muzzle_flash.visible = weapon != null and _flash_left > 0.0
+	execution.update_prompt()
+	if execution.active:
+		return
+	var locked: Node2D = aim_lock.update() if not is_dead else null
 	if not is_dead and not combat.swinging:
-		var target := get_global_mouse_position()
+		var target := locked.global_position if locked != null else get_global_mouse_position()
 		if global_position.distance_squared_to(target) > 4.0:
 			aim.look_at(target)
 	actor_visual.update_state(velocity, aim.global_rotation, speed, is_stunned())
 
 func _fire() -> void:
-	if is_dead or is_stunned():
+	if is_dead or is_stunned() or execution.active:
 		return
 	var shot := combat.can_shoot()
 	if combat.attack(Vector2.RIGHT.rotated(aim.global_rotation)) and shot:
@@ -122,7 +180,7 @@ func _drop(value: WeaponState, flying: bool) -> Node2D:
 	return item
 
 func _throw_weapon() -> void:
-	if weapon_instance == null or is_dead or is_stunned() or combat.committed():
+	if weapon_instance == null or is_dead or is_stunned() or combat.committed() or execution.active:
 		return
 	var value := weapon_instance
 	equip_weapon(null)
@@ -130,7 +188,7 @@ func _throw_weapon() -> void:
 	actor_visual.show_effect(&"throw")
 
 func _pickup_weapon() -> void:
-	if is_dead or is_stunned() or combat.committed():
+	if is_dead or is_stunned() or combat.committed() or execution.active:
 		return
 	var nearest: Node2D = null
 	var best := pickup_radius
@@ -155,26 +213,13 @@ func _pickup_weapon() -> void:
 		_drop(previous, false)
 
 func _try_contact_kill() -> void:
-	if is_dead or is_stunned():
-		return
-	var nearest: Node2D = null
-	var best := execution_radius
-	for enemy: Node2D in get_tree().get_nodes_in_group("enemies"):
-		if not enemy.call("is_stunned"):
-			continue
-		var distance := global_position.distance_to(enemy.global_position)
-		if distance > execution_radius:
-			enemy.execution_armed = true
-		elif enemy.execution_armed and distance <= best and combat.clear_path(global_position, enemy.global_position):
-			nearest = enemy
-			best = distance
-	if nearest != null:
-		nearest.call("take_damage", 1, global_position)
-		actor_visual.show_effect(&"execute")
+	execution.update_prompt()
+
 
 func stun(_dir: Vector2, _power: float) -> void:
 	if is_dead:
 		return
+	execution.cancel()
 	combat.cancel()
 	_flash_left = 0.0
 	_stun_left = STUN_TIME
@@ -184,10 +229,16 @@ func stun(_dir: Vector2, _power: float) -> void:
 func is_stunned() -> bool:
 	return _stun_left > 0.0
 
-func take_damage(_amount: int = 1, _from: Vector2 = Vector2.ZERO) -> void:
+func take_damage(_amount: int = 1, _from: Vector2 = Vector2.ZERO, cause: StringName = &"generic") -> void:
 	if is_dead:
 		return
+	execution.cancel()
 	is_dead = true
+	var direction := (global_position - _from).normalized()
+	actor_visual.receive_impact(direction)
+	Events.hit_resolved.emit(self, global_position, direction, cause, true)
+	Events.actor_died.emit(self, global_position, direction, cause)
+	aim_lock.clear()
 	combat.cancel()
 	var held := weapon_instance
 	if held != null:
